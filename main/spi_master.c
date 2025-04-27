@@ -401,3 +401,113 @@ bool spi_send(const uint8_t *data, bool expect_response)
 
     return xQueueSend(spi_queue, &pkt, pdMS_TO_TICKS(100)) == pdTRUE;
 }
+
+bool spi_send_json(const char *json_str)
+{
+    if (!spi_queue || !json_str)
+        return false;
+
+    spi_packet_t pkt = {.expect_response = true};
+
+    memset(pkt.tx_data, 0, SPI_BUFFER_SIZE);
+
+    size_t json_len = strlen(json_str);
+    if (json_len >= SPI_BUFFER_SIZE)
+    {
+        printf("JSON too large (%d bytes), max is %d\n", json_len, SPI_BUFFER_SIZE - 1);
+        return false;
+    }
+
+    strcpy((char *)pkt.tx_data, json_str);
+
+    return xQueueSend(spi_queue, &pkt, pdMS_TO_TICKS(100)) == pdTRUE;
+}
+
+// Group ID management
+static uint8_t current_group_id = 0;
+
+static uint8_t get_next_group_id(void)
+{
+    current_group_id++;
+    if (current_group_id == 0)
+    {
+        current_group_id = 1; // Skip 0 to avoid ambiguity
+    }
+    return current_group_id;
+}
+
+// Convert SearchData struct to 32-byte buffer
+static void convert_search_to_buffer(const SearchData *data, uint8_t *buffer)
+{
+    memset(buffer, 0, SPI_BUFFER_SIZE);
+
+    // Header
+    buffer[0] = get_next_group_id(); // Unique group_id
+    buffer[1] = 0;                   // part_id
+    buffer[2] = 1;                   // total
+    buffer[3] = NRF_TYPE_SEARCH;
+    buffer[4] = 0; // other
+
+    // Data: pack walls and direction
+    buffer[5] = 0;
+    if (data->wallLeft)
+        buffer[5] |= 0x01;
+    if (data->wallRight)
+        buffer[5] |= 0x02;
+    if (data->wallUp)
+        buffer[5] |= 0x04;
+    if (data->wallDown)
+        buffer[5] |= 0x08;
+    buffer[5] |= (data->direction & 0x07) << 4;
+}
+
+// Convert SolveData struct to 32-byte buffer
+static void convert_solve_to_buffer(const SolveData *data, uint8_t *buffer)
+{
+    memset(buffer, 0, SPI_BUFFER_SIZE);
+
+    // Header
+    buffer[0] = get_next_group_id(); // Unique group_id
+    buffer[1] = 0;                   // part_id
+    buffer[2] = 1;                   // total
+    buffer[3] = NRF_TYPE_SOLVE;
+    buffer[4] = 0; // other
+
+    // Data
+    buffer[5] = data->x;
+    buffer[6] = data->y;
+    buffer[7] = data->direction & 0x03;
+
+    if (data->hasBarcode)
+    {
+        buffer[7] |= 0x80; // Set barcode flag
+        buffer[8] = data->barcode;
+    }
+}
+
+// ISR-safe sending function
+bool spi_send_from_isr(const uint8_t *data, bool expect_response, BaseType_t *pxHigherPriorityTaskWoken)
+{
+    if (!spi_queue)
+        return false;
+
+    spi_packet_t pkt = {.expect_response = expect_response};
+    memcpy(pkt.tx_data, data, SPI_BUFFER_SIZE);
+
+    return xQueueSendFromISR(spi_queue, &pkt, pxHigherPriorityTaskWoken) == pdTRUE;
+}
+
+// NRF-specific sending functions for ISR context
+bool spi_send_search_data_from_isr(const SearchData *data, BaseType_t *pxHigherPriorityTaskWoken)
+{
+    uint8_t buffer[SPI_BUFFER_SIZE];
+    convert_search_to_buffer(data, buffer);
+    return spi_send_from_isr(buffer, false, pxHigherPriorityTaskWoken);
+}
+
+bool spi_send_solve_data_from_isr(const SolveData *data, BaseType_t *pxHigherPriorityTaskWoken)
+{
+    uint8_t buffer[SPI_BUFFER_SIZE];
+    convert_solve_to_buffer(data, buffer);
+    return spi_send_from_isr(buffer, false, pxHigherPriorityTaskWoken);
+}

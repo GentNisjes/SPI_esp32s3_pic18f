@@ -234,36 +234,183 @@
 //     }
 // }
 
+// __________________________________________________
+
+// #include <stdio.h>
+// #include <string.h>
+// #include "freertos/FreeRTOS.h"
+// #include "spi_master.h"
+// #include "timer_module.h"
+
+// // a static packet to send every 2 ms
+// static uint8_t const periodic_data[SPI_BUFFER_SIZE] = {
+//     0xA0, 0x01, 0x02, /* … fill to 10 bytes … */ 0, 0, 0, 0, 0, 0};
+// static esp_timer_handle_t spi_timer;
+
+// static void spi_timer_cb(void *arg)
+// {
+//     // Note: called in ESP timer task, must use FromISR API
+//     spi_packet_t pkt;
+//     memcpy(pkt.tx_data, periodic_data, SPI_BUFFER_SIZE);
+//     pkt.expect_response = true;
+
+//     BaseType_t hpw = pdFALSE;
+//     xQueueSendFromISR(spi_queue, &pkt, &hpw);
+//     portYIELD_FROM_ISR(hpw);
+// }
+
+// void app_main(void)
+// {
+//     // initialize SPI and start its consumer task
+//     spi_master_init();
+//     spi_task_start();
+
+//     // set up a 2 ms periodic SPI callback
+//     spi_timer = create_timer_task(NULL, spi_timer_cb, 2000000);
+//     printf("SPI timer started\n");
+// }
+
+//______________________________________
+
+// // main.c
+// #include <stdio.h>
+// #include <string.h>
+// #include "freertos/FreeRTOS.h"
+// #include "spi_master.h"
+// #include "timer_module.h"
+
+// static esp_timer_handle_t spi_timer;
+
+// static void spi_timer_cb(void *arg)
+// {
+//     // Note: called in ESP timer task, must use FromISR API
+
+//     // Create search data
+//     SearchData search = {
+//         .wallLeft = true,
+//         .wallRight = false,
+//         .wallUp = true,
+//         .wallDown = false,
+//         .direction = 1 // right
+//     };
+
+//     // Send it using the ISR-safe function
+//     BaseType_t hpw = pdFALSE;
+//     spi_send_search_data_from_isr(&search, &hpw);
+//     portYIELD_FROM_ISR(hpw);
+// }
+
+// // Alternative: If you want to keep sending raw data periodically
+// static void raw_spi_timer_cb(void *arg)
+// {
+//     static uint8_t const periodic_data[SPI_BUFFER_SIZE] = {
+//         0xA0, 0x01, 0x02, /* ... fill to 32 bytes ... */ 0, 0, 0, 0, 0, 0};
+
+//     spi_packet_t pkt;
+//     memcpy(pkt.tx_data, periodic_data, SPI_BUFFER_SIZE);
+//     pkt.expect_response = true;
+
+//     BaseType_t hpw = pdFALSE;
+//     xQueueSendFromISR(spi_queue, &pkt, &hpw);
+//     portYIELD_FROM_ISR(hpw);
+// }
+
+// void app_main(void)
+// {
+//     // Initialize SPI and start its consumer task
+//     spi_master_init();
+//     spi_task_start();
+
+//     // Set up a 2 ms periodic SPI callback
+//     spi_timer = create_timer_task(NULL, spi_timer_cb, 15000000);
+//     printf("SPI timer started\n");
+
+//     // Example of regular (non-ISR) sending
+//     // SolveData solve = {
+//     //     .x = 10,
+//     //     .y = 15,
+//     //     .direction = 2, // down
+//     //     .hasBarcode = true,
+//     //     .barcode = 0xAA};
+
+//     // // Regular sending - not from ISR
+//     // spi_send_solve_data(&solve);
+// }
+
+// _____________________________________________________
+
+// main.c - Dynamic flexible approach
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "spi_master.h"
 #include "timer_module.h"
 
-// a static packet to send every 2 ms
-static uint8_t const periodic_data[SPI_BUFFER_SIZE] = {
-    0xA0, 0x01, 0x02, /* … fill to 10 bytes … */ 0, 0, 0, 0, 0, 0};
-static esp_timer_handle_t spi_timer;
-
-static void spi_timer_cb(void *arg)
+// Context structure to hold both data and timer handle
+typedef struct
 {
-    // Note: called in ESP timer task, must use FromISR API
-    spi_packet_t pkt;
-    memcpy(pkt.tx_data, periodic_data, SPI_BUFFER_SIZE);
-    pkt.expect_response = true;
+    SearchData data;
+    esp_timer_handle_t timer_handle;
+} TimerCallbackContext;
 
+// Global context (could also be dynamically allocated)
+static TimerCallbackContext timer_context;
+
+// Callback that receives the context as argument
+static void spi_oneshot_cb_dynamic(void *arg)
+{
+    TimerCallbackContext *ctx = (TimerCallbackContext *)arg;
+
+    // Send the search data using the ISR-safe function
     BaseType_t hpw = pdFALSE;
-    xQueueSendFromISR(spi_queue, &pkt, &hpw);
+    spi_send_search_data_from_isr(&ctx->data, &hpw);
     portYIELD_FROM_ISR(hpw);
+}
+
+// Function to trigger SPI send when path finding completes
+void path_finding_complete(SearchData *result)
+{
+    // Copy the result to our context
+    memcpy(&timer_context.data, result, sizeof(SearchData));
+
+    // Start the one-shot timer
+    start_oneshot_timer(timer_context.timer_handle, 0);
+}
+
+// Example path finding task
+void path_finding_task(void *params)
+{
+    // while (1)
+    //{
+    // Simulate path finding calculation
+    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    // When walls are detected and next cell is calculated
+    SearchData search_result = {
+        .wallLeft = false,
+        .wallRight = true,
+        .wallUp = false,
+        .wallDown = true,
+        .direction = 2 // down
+    };
+
+    // Trigger the one-shot timer to send data
+    path_finding_complete(&search_result);
+    //}
+    vTaskDelay(pdMS_TO_TICKS(1000000000));
 }
 
 void app_main(void)
 {
-    // initialize SPI and start its consumer task
+    // Initialize SPI and start its consumer task
     spi_master_init();
     spi_task_start();
 
-    // set up a 2 ms periodic SPI callback
-    spi_timer = create_timer_task(NULL, spi_timer_cb, 2000000);
-    printf("SPI timer started\n");
+    // Create the one-shot timer with context passed as argument
+    timer_context.timer_handle = create_oneshot_timer_task(&timer_context, spi_oneshot_cb_dynamic);
+
+    // Create the path finding task
+    xTaskCreate(path_finding_task, "path_finding", 4096, NULL, 5, NULL);
+
+    printf("SPI system started with dynamic data passing\n");
 }
