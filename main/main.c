@@ -339,65 +339,227 @@
 
 // _____________________________________________________
 
-// main.c - Dynamic flexible approach
+// // main.c - Dynamic flexible approach
+// #include <stdio.h>
+// #include <string.h>
+// #include "freertos/FreeRTOS.h"
+// #include "spi_master.h"
+// #include "timer_module.h"
+
+// // Context structure to hold both data and timer handle
+// typedef struct
+// {
+//     SearchData data;
+//     esp_timer_handle_t timer_handle;
+// } TimerCallbackContext;
+
+// // Global context (could also be dynamically allocated)
+// static TimerCallbackContext timer_context;
+
+// // Callback that receives the context as argument
+// static void spi_oneshot_cb_dynamic(void *arg)
+// {
+//     TimerCallbackContext *ctx = (TimerCallbackContext *)arg;
+
+//     // Send the search data using the ISR-safe function
+//     BaseType_t hpw = pdFALSE;
+//     spi_send_search_data_from_isr(&ctx->data, &hpw);
+//     portYIELD_FROM_ISR(hpw);
+// }
+
+// // Function to trigger SPI send when path finding completes
+// void path_finding_complete(SearchData *result)
+// {
+//     // Copy the result to our context
+//     memcpy(&timer_context.data, result, sizeof(SearchData));
+
+//     // Start the one-shot timer
+//     start_oneshot_timer(timer_context.timer_handle, 0);
+// }
+
+// // Example path finding task
+// void path_finding_task(void *params)
+// {
+//     // while (1)
+//     //{
+//     // Simulate path finding calculation
+//     vTaskDelay(pdMS_TO_TICKS(1000));
+
+//     // When walls are detected and next cell is calculated
+//     SearchData search_result = {
+//         .wallLeft = false,
+//         .wallRight = true,
+//         .wallUp = false,
+//         .wallDown = true,
+//         .direction = 2 // down
+//     };
+
+//     // Trigger the one-shot timer to send data
+//     path_finding_complete(&search_result);
+//     //}
+//     // vTaskDelay(pdMS_TO_TICKS(1000000)); // timer of
+
+//     // Add this line to properly delete the task when it's done
+//     vTaskDelete(NULL);
+// }
+
+// void app_main(void)
+// {
+//     // Initialize SPI and start its consumer task
+//     spi_master_init();
+//     spi_task_start();
+
+//     // Create the one-shot timer with context passed as argument
+//     timer_context.timer_handle = create_oneshot_timer_task(&timer_context, spi_oneshot_cb_dynamic);
+
+//     // Create the path finding task
+//     xTaskCreate(path_finding_task, "path_finding", 4096, NULL, 5, NULL);
+
+//     printf("SPI system started with dynamic data passing\n");
+// }
+
+//________________________________________________________
+
+// // main.c - Dynamic flexible approach
+// #include <stdio.h>
+// #include <string.h>
+// #include "freertos/FreeRTOS.h"
+// #include "spi_master.h"
+// #include "timer_module.h"
+
+// // Context structure to hold both data and timer handle
+// typedef struct
+// {
+//     SearchData data;
+//     esp_timer_handle_t timer_handle;
+// } TimerCallbackContext;
+
+// // Global context (could also be dynamically allocated)
+// static TimerCallbackContext timer_context;
+
+// // Callback that receives the context as argument
+// static void spi_oneshot_cb_dynamic(void *arg)
+// {
+//     TimerCallbackContext *ctx = (TimerCallbackContext *)arg;
+
+//     // Send the search data using the ISR-safe function
+//     BaseType_t hpw = pdFALSE;
+//     spi_send_search_data_from_isr(&ctx->data, &hpw);
+//     portYIELD_FROM_ISR(hpw);
+// }
+
+// // Function to trigger SPI send when path finding completes
+// void path_finding_complete(SearchData *result)
+// {
+//     // Copy the result to our context
+//     memcpy(&timer_context.data, result, sizeof(SearchData));
+
+//     // Start the one-shot timer
+//     start_oneshot_timer(timer_context.timer_handle, 0);
+// }
+
+// // Example path finding task
+// void path_finding_task(void *params)
+// {
+//     while (1)
+//     {
+//         // Simulate path finding calculation
+//         vTaskDelay(pdMS_TO_TICKS(1000));
+
+//         // When walls are detected and next cell is calculated
+//         SearchData search_result = {
+//             .wallLeft = false,
+//             .wallRight = true,
+//             .wallUp = false,
+//             .wallDown = true,
+//             .direction = 2 // down
+//         };
+
+//         // Trigger the one-shot timer to send data
+//         path_finding_complete(&search_result);
+//     }
+// }
+
+// void app_main(void)
+// {
+//     // Initialize SPI and start its consumer task
+//     spi_master_init();
+//     spi_task_start();
+
+//     // Create the one-shot timer with context passed as argument
+//     timer_context.timer_handle = create_oneshot_timer_task(&timer_context, spi_oneshot_cb_dynamic);
+
+//     // Create the path finding task
+//     xTaskCreate(path_finding_task, "path_finding", 4096, NULL, 5, NULL);
+
+//     printf("SPI system started with dynamic data passing\n");
+// }
+
+//_____________________________________________________
+// main.c - Direct approach without timers
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "spi_master.h"
-#include "timer_module.h"
 
-// Context structure to hold both data and timer handle
-typedef struct
+// Function to send search data directly using existing SPI functions
+void send_search_data(const SearchData *data)
 {
-    SearchData data;
-    esp_timer_handle_t timer_handle;
-} TimerCallbackContext;
+    // Create a buffer for SPI communication
+    uint8_t buffer[SPI_BUFFER_SIZE];
 
-// Global context (could also be dynamically allocated)
-static TimerCallbackContext timer_context;
+    // Clear the buffer
+    memset(buffer, 0, SPI_BUFFER_SIZE);
 
-// Callback that receives the context as argument
-static void spi_oneshot_cb_dynamic(void *arg)
-{
-    TimerCallbackContext *ctx = (TimerCallbackContext *)arg;
+    // Pack the wall data into the first byte
+    buffer[0] = 0;
+    if (data->wallLeft)
+        buffer[0] |= 0x01;
+    if (data->wallRight)
+        buffer[0] |= 0x02;
+    if (data->wallUp)
+        buffer[0] |= 0x04;
+    if (data->wallDown)
+        buffer[0] |= 0x08;
 
-    // Send the search data using the ISR-safe function
-    BaseType_t hpw = pdFALSE;
-    spi_send_search_data_from_isr(&ctx->data, &hpw);
-    portYIELD_FROM_ISR(hpw);
+    // Set the direction in the second byte
+    buffer[1] = data->direction;
+
+    // Send the data directly using the existing SPI function
+    bool success = spi_send(buffer, true);
+    if (!success)
+    {
+        printf("Failed to send SPI packet\n");
+    }
 }
 
 // Function to trigger SPI send when path finding completes
 void path_finding_complete(SearchData *result)
 {
-    // Copy the result to our context
-    memcpy(&timer_context.data, result, sizeof(SearchData));
-
-    // Start the one-shot timer
-    start_oneshot_timer(timer_context.timer_handle, 0);
+    // Directly send the data without using a timer
+    send_search_data(result);
 }
 
 // Example path finding task
 void path_finding_task(void *params)
 {
-    // while (1)
-    //{
-    // Simulate path finding calculation
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    while (1)
+    {
+        // Simulate path finding calculation
+        vTaskDelay(pdMS_TO_TICKS(1000));
 
-    // When walls are detected and next cell is calculated
-    SearchData search_result = {
-        .wallLeft = false,
-        .wallRight = true,
-        .wallUp = false,
-        .wallDown = true,
-        .direction = 2 // down
-    };
+        // When walls are detected and next cell is calculated
+        SearchData search_result = {
+            .wallLeft = false,
+            .wallRight = true,
+            .wallUp = false,
+            .wallDown = true,
+            .direction = 2 // down
+        };
 
-    // Trigger the one-shot timer to send data
-    path_finding_complete(&search_result);
-    //}
-    vTaskDelay(pdMS_TO_TICKS(1000000000));
+        // Directly call the function to send data - no timer needed
+        path_finding_complete(&search_result);
+    }
 }
 
 void app_main(void)
@@ -406,11 +568,8 @@ void app_main(void)
     spi_master_init();
     spi_task_start();
 
-    // Create the one-shot timer with context passed as argument
-    timer_context.timer_handle = create_oneshot_timer_task(&timer_context, spi_oneshot_cb_dynamic);
-
     // Create the path finding task
     xTaskCreate(path_finding_task, "path_finding", 4096, NULL, 5, NULL);
 
-    printf("SPI system started with dynamic data passing\n");
+    printf("SPI system started with direct send approach\n");
 }

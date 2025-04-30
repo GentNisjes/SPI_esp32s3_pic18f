@@ -304,10 +304,10 @@
 #include "freertos/queue.h"
 #include "driver/spi_master.h"
 
-#define SPI_MOSI 18
-#define SPI_MISO 19
-#define SPI_SCLK 20
-#define SPI_CS 48
+#define SPI_MOSI 18 // Connected to SDI pin of PIC18F (RC5)
+#define SPI_MISO 19 // Connected to SDO pin of PIC18F (RC6)
+#define SPI_SCLK 20 // Connected to SCK pin of PIC18F (RC4)
+#define SPI_CS 48   // Connected to SS pin of PIC18F (RA6)
 
 static spi_device_handle_t spi_handle;
 QueueHandle_t spi_queue = NULL;
