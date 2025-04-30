@@ -496,48 +496,33 @@
 // }
 
 //_____________________________________________________
+
 // main.c - Direct approach without timers
 #include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "spi_master.h"
 
-// Function to send search data directly using existing SPI functions
-void send_search_data(const SearchData *data)
-{
-    // Create a buffer for SPI communication
-    uint8_t buffer[SPI_BUFFER_SIZE];
-
-    // Clear the buffer
-    memset(buffer, 0, SPI_BUFFER_SIZE);
-
-    // Pack the wall data into the first byte
-    buffer[0] = 0;
-    if (data->wallLeft)
-        buffer[0] |= 0x01;
-    if (data->wallRight)
-        buffer[0] |= 0x02;
-    if (data->wallUp)
-        buffer[0] |= 0x04;
-    if (data->wallDown)
-        buffer[0] |= 0x08;
-
-    // Set the direction in the second byte
-    buffer[1] = data->direction;
-
-    // Send the data directly using the existing SPI function
-    bool success = spi_send(buffer, true);
-    if (!success)
-    {
-        printf("Failed to send SPI packet\n");
-    }
-}
-
 // Function to trigger SPI send when path finding completes
 void path_finding_complete(SearchData *result)
 {
-    // Directly send the data without using a timer
-    send_search_data(result);
+    // Call the appropriate SPI send function directly
+    // Either use existing function if available or add it:
+
+    // Option 1: If you have a non-ISR version:
+    bool success = spi_send_search_data(result);
+
+    // Option 2: If you don't have a non-ISR version but can add it:
+    /*
+    uint8_t buffer[SPI_BUFFER_SIZE];
+    convert_search_to_buffer(result, buffer);
+    bool success = spi_send(buffer, false);
+    */
+
+    if (!success)
+    {
+        printf("Failed to send search data\n");
+    }
 }
 
 // Example path finding task

@@ -511,3 +511,18 @@ bool spi_send_solve_data_from_isr(const SolveData *data, BaseType_t *pxHigherPri
     convert_solve_to_buffer(data, buffer);
     return spi_send_from_isr(buffer, false, pxHigherPriorityTaskWoken);
 }
+
+// Non-ISR version of the search data sending function
+bool spi_send_search_data(const SearchData *data)
+{
+    uint8_t buffer[SPI_BUFFER_SIZE];
+    convert_search_to_buffer(data, buffer);
+    return spi_send(buffer, false); // Assuming you don't need a response
+}
+
+bool spi_send_solve_data(const SolveData *data)
+{
+    uint8_t buffer[SPI_BUFFER_SIZE];
+    convert_solve_to_buffer(data, buffer);
+    return spi_send(buffer, false); // Assuming you don't need a response
+}

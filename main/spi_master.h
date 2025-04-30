@@ -74,4 +74,7 @@ bool spi_send_from_isr(const uint8_t *data, bool expect_response, BaseType_t *px
 bool spi_send_search_data_from_isr(const SearchData *data, BaseType_t *pxHigherPriorityTaskWoken);
 bool spi_send_solve_data_from_isr(const SolveData *data, BaseType_t *pxHigherPriorityTaskWoken);
 
+bool spi_send_search_data(const SearchData *data);
+bool spi_send_solve_data(const SolveData *data);
+
 #endif
